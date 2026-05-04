@@ -164,17 +164,17 @@ def session_meta(path: str, mtime: float) -> dict | None:
 def parse_session(path: str) -> dict:
     """Full parse of a session jsonl. Returns aggregates needed for the detail view."""
     in_t = out_t = cache_r = cache_w = 0
+    turns = 0
     by_model: dict[str, dict[str, int]] = {}
     api_errors = 0
     tools: dict[str, int] = {}
     msgs: list[dict] = []
-    spark: list[dict] = []
     events: list[dict] = []
     files: dict[str, dict] = {}
     cwd = branch = ""
     first_ts: str | None = None
-    with open(path) as f:
-        for line in f:
+    with open(path) as fh:
+        for line in fh:
             try:
                 d = json.loads(line)
             except json.JSONDecodeError:
@@ -204,7 +204,7 @@ def parse_session(path: str) -> dict:
                 bm["out"] += u.get("output_tokens", 0) or 0
                 bm["cache_r"] += u.get("cache_read_input_tokens", 0) or 0
                 bm["cache_w"] += u.get("cache_creation_input_tokens", 0) or 0
-                spark.append({"ts": ts, "out": u.get("output_tokens", 0) or 0})
+                turns += 1
             c = m.get("content")
             text = ""
             tool_names_here: list[str] = []
@@ -222,13 +222,13 @@ def parse_session(path: str) -> dict:
                         if isinstance(inp, dict):
                             fp = inp.get("file_path") or inp.get("notebook_path") or inp.get("path")
                             if fp and isinstance(fp, str):
-                                f = files.setdefault(fp, {"read": 0, "edit": 0, "write": 0})
+                                fc = files.setdefault(fp, {"read": 0, "edit": 0, "write": 0})
                                 if nm in ("Edit", "MultiEdit", "NotebookEdit"):
-                                    f["edit"] += 1
+                                    fc["edit"] += 1
                                 elif nm == "Write":
-                                    f["write"] += 1
+                                    fc["write"] += 1
                                 elif nm == "Read":
-                                    f["read"] += 1
+                                    fc["read"] += 1
                     elif b.get("type") == "text" and not text:
                         text = b.get("text", "")
             text = text.strip()
@@ -253,7 +253,7 @@ def parse_session(path: str) -> dict:
         "cache_w": cache_w,
         "tools": tools,
         "msgs": msgs,
-        "spark": spark,
+        "turns": turns,
         "events": events,
         "files": files,
         "api_errors": api_errors,
