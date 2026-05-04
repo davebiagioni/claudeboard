@@ -52,7 +52,10 @@ def session_diff(cwd: str, since: str) -> dict | None:
 
 
 def git_activity(cwd: str, since: str) -> dict | None:
-    """Commits in cwd since timestamp, with per-commit and total LOC deltas."""
+    """Commits in cwd since timestamp, with per-commit and total LOC deltas.
+
+    Returns None if cwd is missing, isn't a git repo, or git fails for any reason.
+    """
     if not cwd or not os.path.isdir(cwd) or not since:
         return None
     try:
@@ -63,9 +66,9 @@ def git_activity(cwd: str, since: str) -> dict | None:
             timeout=2,
         )
     except (subprocess.TimeoutExpired, OSError):
-        return {"error": "git unavailable"}
+        return None
     if r.returncode != 0:
-        return {"error": "not a git repo"}
+        return None
     try:
         r = subprocess.run(
             ["git", "-C", cwd, "log", "--since", since, "--pretty=format:%h %s", "--numstat"],
@@ -74,9 +77,9 @@ def git_activity(cwd: str, since: str) -> dict | None:
             timeout=3,
         )
     except subprocess.TimeoutExpired:
-        return {"error": "git log timed out"}
+        return None
     if r.returncode != 0:
-        return {"error": r.stderr[:120].strip()}
+        return None
     commits: list[dict] = []
     cur: dict | None = None
     add = rm = 0

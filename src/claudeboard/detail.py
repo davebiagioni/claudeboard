@@ -68,7 +68,7 @@ def detail(sid: str) -> dict | None:
         ({"path": short_path(p), **counts} for p, counts in s["files"].items()),
         key=lambda x: -(x["edit"] * 3 + x["write"] * 3 + x["read"]),
     )
-    turns = len(s["spark"])
+    turns = s["turns"]
     tools_total = sum(s["tools"].values())
     total_cost, per_model = model_cost(s["by_model"])
     cost_mix = cost_breakdown(s["by_model"])

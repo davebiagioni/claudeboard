@@ -27,8 +27,7 @@ def tmp_repo(tmp_path: Path) -> Path:
 
 
 def test_git_activity_not_a_repo(tmp_path):
-    result = cb_git.git_activity(str(tmp_path), "2026-01-01T00:00:00Z")
-    assert result == {"error": "not a git repo"}
+    assert cb_git.git_activity(str(tmp_path), "2026-01-01T00:00:00Z") is None
 
 
 def test_git_activity_missing_cwd():

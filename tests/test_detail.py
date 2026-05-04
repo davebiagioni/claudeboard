@@ -1,4 +1,4 @@
-"""Tests for detail.cost_estimate, time_breakdown, trim_turn, detail."""
+"""Tests for detail.cost_breakdown, time_breakdown, trim_turn, detail."""
 
 from __future__ import annotations
 

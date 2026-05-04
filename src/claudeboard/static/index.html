@@ -361,9 +361,7 @@ function toolBlock(tools){
 }
 
 function gitBlock(g){
-  if (!g) return el('div','muted','no cwd');
-  if (g.error) return el('div','muted', g.error);
-  if (!g.commits || !g.commits.length) return el('div','muted','no commits since session start');
+  if (!g || !g.commits || !g.commits.length) return el('div','muted','no commits since session start');
   const wrap = el('div');
   for (const c of g.commits) {
     const r = el('div','commit');

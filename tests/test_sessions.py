@@ -133,3 +133,94 @@ def test_live_session_paths_empty_when_no_processes():
 def test_live_session_paths_unmatched_cwd_returns_empty(tmp_path):
     cwd_counts = {"/some/random/cwd": 5}
     assert sessions._live_session_paths([], cwd_counts) == set()
+
+
+class _FakeProc:
+    def __init__(self, stdout: str = "", returncode: int = 0):
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+def test_claude_cwd_counts_parses_ps_and_lsof(monkeypatch):
+    """Mock ps + lsof to verify claude_cwd_counts extracts cwd-by-pid correctly."""
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd[:2])
+        if cmd[:2] == ["ps", "-axo"]:
+            # Two claude processes (1234, 5678), one unrelated (9999)
+            return _FakeProc(
+                stdout=("1234 claude\n5678 /usr/local/bin/claude\n9999 python\n  77 launchd\n")
+            )
+        if cmd[:2] == ["lsof", "-a"]:
+            assert "1234,5678" in cmd  # pids comma-joined
+            return _FakeProc(
+                stdout=("p1234\nfcwd\nn/Users/dave/dev/foo\np5678\nfcwd\nn/Users/dave/dev/foo\n")
+            )
+        raise AssertionError(f"unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr("claudeboard.sessions.subprocess.run", fake_run)
+    counts = sessions.claude_cwd_counts()
+    assert counts == {"/Users/dave/dev/foo": 2}
+
+
+def test_claude_cwd_counts_no_claude_processes(monkeypatch):
+    monkeypatch.setattr(
+        "claudeboard.sessions.subprocess.run",
+        lambda *a, **kw: _FakeProc(stdout="9999 python\n77 launchd\n"),
+    )
+    assert sessions.claude_cwd_counts() == {}
+
+
+def test_claude_cwd_counts_handles_subprocess_failure(monkeypatch):
+    def boom(*a, **kw):
+        raise OSError("nope")
+
+    monkeypatch.setattr("claudeboard.sessions.subprocess.run", boom)
+    assert sessions.claude_cwd_counts() == {}
+
+
+def _scan_with(monkeypatch, fake_root, *, age_secs: float, live_all: bool) -> str:
+    """Return the status of the single fixture session under the given conditions."""
+    import glob as _glob
+
+    now = 10_000_000.0
+    target_mtime = now - age_secs
+    paths = _glob.glob(os.path.join(str(fake_root), "*", "*.jsonl"))
+    for p in paths:
+        os.utime(p, (target_mtime, target_mtime))
+    live = set(paths) if live_all else set()
+    monkeypatch.setattr("claudeboard.sessions.time.time", lambda: now)
+    monkeypatch.setattr("claudeboard.sessions._meta_cache", {})
+    monkeypatch.setattr("claudeboard.sessions._live_session_paths", lambda *a: live)
+    monkeypatch.setattr("claudeboard.sessions.claude_cwd_counts", lambda: {})
+    rows = sessions.scan()
+    return rows[0]["status"]
+
+
+def test_scan_status_busy_when_recent(monkeypatch, fake_root):
+    assert _scan_with(monkeypatch, fake_root, age_secs=10, live_all=False) == "busy"
+
+
+def test_scan_status_idle_when_live_but_old(monkeypatch, fake_root):
+    assert _scan_with(monkeypatch, fake_root, age_secs=3600, live_all=True) == "idle"
+
+
+def test_scan_status_dead_when_not_live_and_old(monkeypatch, fake_root):
+    assert _scan_with(monkeypatch, fake_root, age_secs=3600, live_all=False) == "dead"
+
+
+def test_price_for_matches_full_model_id():
+    p = sessions.price_for("claude-opus-4-7")
+    assert p == sessions.PRICING["claude-opus-4-7"]
+
+
+def test_price_for_matches_dated_suffix():
+    """Models ship with date suffixes; price_for should prefix-match them."""
+    p = sessions.price_for("claude-opus-4-7-20260101")
+    assert p == sessions.PRICING["claude-opus-4-7"]
+
+
+def test_price_for_unknown_falls_back_to_default():
+    assert sessions.price_for("claude-mystery-99") == sessions.DEFAULT_PRICING
+    assert sessions.price_for("") == sessions.DEFAULT_PRICING

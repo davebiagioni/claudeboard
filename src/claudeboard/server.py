@@ -41,7 +41,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._json(d)
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path == "/data.json":
             self._json(scan())
             return
@@ -70,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         if self.path.startswith("/summary/"):
             sid = self.path[len("/summary/") :]
             if not ID_RE.match(sid):
