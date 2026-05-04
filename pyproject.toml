@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claudeboard"
+version = "0.1.0"
+description = "Web dashboard for Claude Code sessions"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Dave Biagioni", email = "davebiagioni@gmail.com" }]
+keywords = ["claude", "dashboard", "observability"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+  "pre-commit>=3.7",
+]
+
+[project.scripts]
+claudeboard = "claudeboard.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/davebiagioni/claudeboard"
+Issues = "https://github.com/davebiagioni/claudeboard/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claudeboard"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501"]  # long lines tolerated; line-length is a soft target
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
