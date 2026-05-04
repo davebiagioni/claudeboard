@@ -14,7 +14,7 @@ USAGE = "usage: claudeboard [start|stop]"
 
 def _stop() -> int:
     out = subprocess.run(
-        ["lsof", "-tiTCP:%d" % PORT, "-sTCP:LISTEN", "-nP"],
+        ["lsof", f"-tiTCP:{PORT}", "-sTCP:LISTEN", "-nP"],
         capture_output=True,
         text=True,
     )
