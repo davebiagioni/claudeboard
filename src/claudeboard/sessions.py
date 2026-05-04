@@ -83,6 +83,7 @@ def session_meta(path: str, mtime: float) -> dict | None:
     cwd = branch = ai_title = slug = ""
     first_user = last_user = last_text = last_tool = last_role = ""
     by_model: dict[str, dict[str, int]] = {}
+    seen_usage_keys: set = set()
     try:
         with open(path) as f:
             for line in f:
@@ -102,6 +103,16 @@ def session_meta(path: str, mtime: float) -> dict | None:
                 if not isinstance(m, dict):
                     continue
                 u = m.get("usage")
+                if isinstance(u, dict):
+                    # Claude Code splits one assistant API response into multiple
+                    # jsonl rows (thinking/text/tool_use), each redundantly carrying
+                    # the same usage. Dedup by requestId/message.id so cost isn't
+                    # multiplied by the number of content blocks.
+                    key = d.get("requestId") or m.get("id")
+                    if key and key in seen_usage_keys:
+                        u = None
+                    elif key:
+                        seen_usage_keys.add(key)
                 if isinstance(u, dict):
                     model = m.get("model") or "unknown"
                     bm = by_model.setdefault(model, {"in": 0, "out": 0, "cache_r": 0, "cache_w": 0})
@@ -173,6 +184,7 @@ def parse_session(path: str) -> dict:
     files: dict[str, dict] = {}
     cwd = branch = ""
     first_ts: str | None = None
+    seen_usage_keys: set = set()
     with open(path) as fh:
         for line in fh:
             try:
@@ -193,6 +205,16 @@ def parse_session(path: str) -> dict:
                 continue
             role = m.get("role", "")
             u = m.get("usage")
+            if isinstance(u, dict):
+                # Claude Code splits one assistant API response into multiple jsonl
+                # rows (thinking/text/tool_use), each redundantly carrying the same
+                # usage. Dedup by requestId/message.id so cost and turn count aren't
+                # multiplied by the number of content blocks.
+                key = d.get("requestId") or m.get("id")
+                if key and key in seen_usage_keys:
+                    u = None
+                elif key:
+                    seen_usage_keys.add(key)
             if isinstance(u, dict):
                 in_t += u.get("input_tokens", 0) or 0
                 out_t += u.get("output_tokens", 0) or 0

@@ -71,6 +71,65 @@ def test_parse_session_events_have_timestamps(sample_jsonl):
     assert {e.get("name") for e in s["events"] if e["kind"] == "tool"} == {"Edit", "Read"}
 
 
+def test_parse_session_dedups_split_assistant_usage(tmp_path):
+    """Claude Code logs one API response as multiple jsonl rows (thinking/text/
+    tool_use), each carrying the same usage. Only the first should count."""
+    import json
+
+    p = tmp_path / "split.jsonl"
+    usage = {
+        "input_tokens": 10,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 100,
+        "cache_creation_input_tokens": 50,
+    }
+    rows = [
+        {
+            "type": "assistant",
+            "requestId": "req_A",
+            "timestamp": "2026-05-04T01:00:00.000Z",
+            "message": {
+                "id": "msg_A",
+                "role": "assistant",
+                "content": [{"type": "thinking", "thinking": "..."}],
+                "usage": usage,
+            },
+        },
+        {
+            "type": "assistant",
+            "requestId": "req_A",
+            "timestamp": "2026-05-04T01:00:00.001Z",
+            "message": {
+                "id": "msg_A",
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Read", "input": {}}],
+                "usage": usage,
+            },
+        },
+        {
+            "type": "assistant",
+            "requestId": "req_B",
+            "timestamp": "2026-05-04T01:01:00.000Z",
+            "message": {
+                "id": "msg_B",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "done"}],
+                "usage": usage,
+            },
+        },
+    ]
+    with p.open("w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    s = sessions.parse_session(str(p))
+    # Two distinct requests, not three rows worth of usage.
+    assert s["in"] == 20
+    assert s["out"] == 40
+    assert s["cache_r"] == 200
+    assert s["cache_w"] == 100
+    assert s["turns"] == 2
+
+
 def test_parse_session_skips_malformed_lines(malformed_jsonl):
     s = sessions.parse_session(str(malformed_jsonl))
     # Should still pick up the user record (the one that's valid)
