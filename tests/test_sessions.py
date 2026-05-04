@@ -27,6 +27,9 @@ def test_session_meta_extracts_fields(sample_jsonl):
     assert info["first_user"] == "do the thing"
     assert info["last_user"] == "another prompt"
     assert info["last_role"] == "user"
+    # Cost from sample fixture: in=100, out=50, cache_r=1000, cache_w=500
+    # = (300 + 750 + 300 + 1875) / 1e6 = 0.003225
+    assert info["cost"] == 0.0032
 
 
 def test_session_meta_caches_by_mtime(sample_jsonl, monkeypatch):
@@ -103,3 +106,30 @@ def test_find_session_returns_path(fake_root):
 
 def test_find_session_returns_none_for_missing(fake_root):
     assert sessions.find_session("does-not-exist") is None
+
+
+def test_live_session_paths_picks_top_n_by_mtime(tmp_path):
+    proj = tmp_path / "-Users-dave-dev-foo"
+    proj.mkdir()
+    older = proj / "older.jsonl"
+    middle = proj / "middle.jsonl"
+    newer = proj / "newer.jsonl"
+    older.write_text("")
+    middle.write_text("")
+    newer.write_text("")
+    os = __import__("os")
+    os.utime(older, (1000, 1000))
+    os.utime(middle, (2000, 2000))
+    os.utime(newer, (3000, 3000))
+    cwd_counts = {"/Users/dave/dev/foo": 2}
+    live = sessions._live_session_paths([str(older), str(middle), str(newer)], cwd_counts)
+    assert live == {str(newer), str(middle)}
+
+
+def test_live_session_paths_empty_when_no_processes():
+    assert sessions._live_session_paths(["/anything.jsonl"], {}) == set()
+
+
+def test_live_session_paths_unmatched_cwd_returns_empty(tmp_path):
+    cwd_counts = {"/some/random/cwd": 5}
+    assert sessions._live_session_paths([], cwd_counts) == set()
