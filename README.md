@@ -7,6 +7,8 @@ $200 Claude Max plan.
 
 ![ci](https://github.com/davebiagioni/claudeboard/actions/workflows/ci.yml/badge.svg)
 
+![claudeboard dashboard](docs/screenshot.png)
+
 > **The pitch in one number:** if you're a heavy Opus user, your `$200/mo` Max
 > plan is probably costing you the equivalent of more than `$1,000/mo` at API
 > list prices. claudeboard tells you exactly how much, per session and
