@@ -1,5 +1,3 @@
-"""Tests for git.git_activity and git.session_diff."""
-
 from __future__ import annotations
 
 import subprocess
@@ -12,7 +10,6 @@ from claudeboard import git as cb_git
 
 @pytest.fixture
 def tmp_repo(tmp_path: Path) -> Path:
-    """A real git repo with two commits, useful for activity tests."""
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True)

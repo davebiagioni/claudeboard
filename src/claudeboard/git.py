@@ -1,5 +1,3 @@
-"""Git activity helpers: commits since session start, total diff vs pre-session HEAD."""
-
 from __future__ import annotations
 
 import os
@@ -7,11 +5,9 @@ import re
 import subprocess
 
 
+# Working-tree diff vs the commit that was HEAD when `since` was recorded.
+# Returns None if no pre-session commit exists or git fails.
 def session_diff(cwd: str, since: str) -> dict | None:
-    """Total diff (working tree) vs the commit that was HEAD when the session started.
-
-    Returns None if there's no pre-session commit (e.g., session predates the repo's history).
-    """
     if not cwd or not os.path.isdir(cwd) or not since:
         return None
     try:
@@ -38,24 +34,22 @@ def session_diff(cwd: str, since: str) -> dict | None:
     if r.returncode != 0:
         return None
     out = r.stdout.strip()
-    files = ins = dels = 0
-    m = re.search(r"(\d+) files? changed", out)
-    if m:
-        files = int(m.group(1))
-    m = re.search(r"(\d+) insertions?", out)
-    if m:
-        ins = int(m.group(1))
-    m = re.search(r"(\d+) deletions?", out)
-    if m:
-        dels = int(m.group(1))
-    return {"start": start_sha[:7], "files": files, "add": ins, "rm": dels}
+
+    def n(pat: str) -> int:
+        m = re.search(pat, out)
+        return int(m.group(1)) if m else 0
+
+    return {
+        "start": start_sha[:7],
+        "files": n(r"(\d+) files? changed"),
+        "add": n(r"(\d+) insertions?"),
+        "rm": n(r"(\d+) deletions?"),
+    }
 
 
+# Commits in cwd since `since`, with per-commit and total LOC deltas.
+# Returns None if cwd is missing, isn't a git repo, or git fails.
 def git_activity(cwd: str, since: str) -> dict | None:
-    """Commits in cwd since timestamp, with per-commit and total LOC deltas.
-
-    Returns None if cwd is missing, isn't a git repo, or git fails for any reason.
-    """
     if not cwd or not os.path.isdir(cwd) or not since:
         return None
     try:

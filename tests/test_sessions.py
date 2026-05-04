@@ -1,5 +1,3 @@
-"""Tests for sessions.parse_session, session_meta, scan, short_path."""
-
 from __future__ import annotations
 
 import os
@@ -72,8 +70,6 @@ def test_parse_session_events_have_timestamps(sample_jsonl):
 
 
 def test_parse_session_dedups_split_assistant_usage(tmp_path):
-    """Claude Code logs one API response as multiple jsonl rows (thinking/text/
-    tool_use), each carrying the same usage. Only the first should count."""
     import json
 
     p = tmp_path / "split.jsonl"
@@ -201,7 +197,6 @@ class _FakeProc:
 
 
 def test_claude_cwd_counts_parses_ps_and_lsof(monkeypatch):
-    """Mock ps + lsof to verify claude_cwd_counts extracts cwd-by-pid correctly."""
     calls = []
 
     def fake_run(cmd, **kwargs):
@@ -240,7 +235,6 @@ def test_claude_cwd_counts_handles_subprocess_failure(monkeypatch):
 
 
 def _scan_with(monkeypatch, fake_root, *, age_secs: float, live_all: bool) -> str:
-    """Return the status of the single fixture session under the given conditions."""
     import glob as _glob
 
     now = 10_000_000.0
@@ -275,7 +269,6 @@ def test_price_for_matches_full_model_id():
 
 
 def test_price_for_matches_dated_suffix():
-    """Models ship with date suffixes; price_for should prefix-match them."""
     p = sessions.price_for("claude-opus-4-7-20260101")
     assert p == sessions.PRICING["claude-opus-4-7"]
 

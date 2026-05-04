@@ -1,5 +1,3 @@
-"""Session jsonl loading: scanning the project dir, parsing files, caching by mtime."""
-
 from __future__ import annotations
 
 import glob
@@ -11,9 +9,7 @@ import time
 ROOT = os.path.expanduser("~/.claude/projects")
 MAX_MSG_BYTES = 50_000
 
-# Anthropic list pricing in USD per 1M tokens: (input, output, cache_read, cache_write_5m).
-# Cache write 5m is the standard; some calls may use 1h pricing but we approximate.
-# Update when Anthropic updates pricing or when new model families ship.
+# (input, output, cache_read, cache_write_5m) USD per 1M tokens.
 PRICING: dict[str, tuple[float, float, float, float]] = {
     "claude-opus-4-7": (15.0, 75.0, 1.50, 18.75),
     "claude-opus-4-6": (15.0, 75.0, 1.50, 18.75),
@@ -41,7 +37,6 @@ def price_for(model: str) -> tuple[float, float, float, float]:
 
 
 def model_cost(by_model: dict[str, dict[str, int]]) -> tuple[float, dict[str, float]]:
-    """Return (total_cost_usd, per_model_cost) given a {model: {in/out/cache_r/cache_w}} map."""
     total = 0.0
     by_m: dict[str, float] = {}
     for model, t in by_model.items():
@@ -72,18 +67,15 @@ def find_session(sid: str) -> str | None:
     return matches[0] if matches else None
 
 
+# Returns None if the file disappeared mid-read.
 def session_meta(path: str, mtime: float) -> dict | None:
-    """Cheap fields read from the whole jsonl, cached by mtime.
-
-    Returns None if the file disappeared mid-read.
-    """
     hit = _meta_cache.get(path)
     if hit and hit[0] == mtime:
         return hit[1]
     cwd = branch = ai_title = slug = ""
     first_user = last_user = last_text = last_tool = last_role = ""
     by_model: dict[str, dict[str, int]] = {}
-    seen_usage_keys: set = set()
+    seen: set = set()
     try:
         with open(path) as f:
             for line in f:
@@ -103,16 +95,16 @@ def session_meta(path: str, mtime: float) -> dict | None:
                 if not isinstance(m, dict):
                     continue
                 u = m.get("usage")
+                # Claude Code splits one assistant API response into multiple
+                # jsonl rows (thinking/text/tool_use), each redundantly carrying
+                # the same usage. Dedup by requestId/message.id so cost isn't
+                # multiplied by the number of content blocks.
                 if isinstance(u, dict):
-                    # Claude Code splits one assistant API response into multiple
-                    # jsonl rows (thinking/text/tool_use), each redundantly carrying
-                    # the same usage. Dedup by requestId/message.id so cost isn't
-                    # multiplied by the number of content blocks.
                     key = d.get("requestId") or m.get("id")
-                    if key and key in seen_usage_keys:
+                    if key and key in seen:
                         u = None
                     elif key:
-                        seen_usage_keys.add(key)
+                        seen.add(key)
                 if isinstance(u, dict):
                     model = m.get("model") or "unknown"
                     bm = by_model.setdefault(model, {"in": 0, "out": 0, "cache_r": 0, "cache_w": 0})
@@ -173,7 +165,6 @@ def session_meta(path: str, mtime: float) -> dict | None:
 
 
 def parse_session(path: str) -> dict:
-    """Full parse of a session jsonl. Returns aggregates needed for the detail view."""
     in_t = out_t = cache_r = cache_w = 0
     turns = 0
     by_model: dict[str, dict[str, int]] = {}
@@ -184,7 +175,7 @@ def parse_session(path: str) -> dict:
     files: dict[str, dict] = {}
     cwd = branch = ""
     first_ts: str | None = None
-    seen_usage_keys: set = set()
+    seen: set = set()
     with open(path) as fh:
         for line in fh:
             try:
@@ -205,16 +196,13 @@ def parse_session(path: str) -> dict:
                 continue
             role = m.get("role", "")
             u = m.get("usage")
+            # See session_meta: dedup split assistant rows by requestId/id.
             if isinstance(u, dict):
-                # Claude Code splits one assistant API response into multiple jsonl
-                # rows (thinking/text/tool_use), each redundantly carrying the same
-                # usage. Dedup by requestId/message.id so cost and turn count aren't
-                # multiplied by the number of content blocks.
                 key = d.get("requestId") or m.get("id")
-                if key and key in seen_usage_keys:
+                if key and key in seen:
                     u = None
                 elif key:
-                    seen_usage_keys.add(key)
+                    seen.add(key)
             if isinstance(u, dict):
                 in_t += u.get("input_tokens", 0) or 0
                 out_t += u.get("output_tokens", 0) or 0
@@ -284,11 +272,6 @@ def parse_session(path: str) -> dict:
 
 
 def claude_cwd_counts() -> dict[str, int]:
-    """How many running `claude` processes have each cwd.
-
-    Used to mark sessions whose terminal tab is still open as 'live' even if
-    the jsonl hasn't been written to recently. Returns {} on any failure.
-    """
     try:
         r = subprocess.run(["ps", "-axo", "pid=,comm="], capture_output=True, text=True, timeout=2)
     except (subprocess.TimeoutExpired, OSError):
@@ -318,7 +301,6 @@ def claude_cwd_counts() -> dict[str, int]:
 
 
 def _live_session_paths(all_paths: list[str], cwd_counts: dict[str, int]) -> set[str]:
-    """For each cwd with running claude(s), the N most-recent jsonls in its project dir are live."""
     if not cwd_counts:
         return set()
     by_project: dict[str, list[tuple[float, str]]] = {}
@@ -342,7 +324,6 @@ def _live_session_paths(all_paths: list[str], cwd_counts: dict[str, int]) -> set
 
 
 def scan() -> list[dict]:
-    """List all sessions sorted by mtime desc, with cheap metadata for the sidebar."""
     now = time.time()
     paths = glob.glob(os.path.join(ROOT, "*", "*.jsonl"))
     live = _live_session_paths(paths, claude_cwd_counts())
@@ -356,10 +337,9 @@ def scan() -> list[dict]:
         if info is None:
             continue
         age = now - st.st_mtime
-        is_live = path in live
         if age < 60:
             status = "busy"
-        elif is_live:
+        elif path in live:
             status = "idle"
         else:
             status = "dead"
