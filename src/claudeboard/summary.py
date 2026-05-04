@@ -1,5 +1,3 @@
-"""Sonnet-generated session summary, cached on disk by msg count."""
-
 from __future__ import annotations
 
 import contextlib
@@ -17,7 +15,6 @@ MAX_TOKENS = 400
 
 
 def call_sonnet(prompt: str) -> dict:
-    """POST /v1/messages and return {"text": ...} or {"error": ...}."""
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         return {"error": "ANTHROPIC_API_KEY not set"}
@@ -44,12 +41,10 @@ def call_sonnet(prompt: str) -> dict:
         return {"error": f"{e.code} {e.read().decode()[:200]}"}
     except urllib.error.URLError as e:
         return {"error": str(e)[:200]}
-    text = ""
     for b in d.get("content", []):
         if b.get("type") == "text":
-            text = b.get("text", "")
-            break
-    return {"text": text}
+            return {"text": b.get("text", "")}
+    return {"text": ""}
 
 
 def summarize(sid: str) -> dict | None:
@@ -69,8 +64,7 @@ def summarize(sid: str) -> dict | None:
             pass
     if not msgs:
         return {"summary": "(no transcript)", "msg_count": 0}
-    recent = msgs[-60:]
-    transcript = "\n\n".join(f"[{m['role']}] {m['text'][:2500]}" for m in recent)
+    transcript = "\n\n".join(f"[{m['role']}] {m['text'][:2500]}" for m in msgs[-60:])
     prompt = (
         "Summarize what this Claude Code session is doing in 3-5 sentences. "
         "Focus on the user's goal, what's been accomplished, and what's in progress. "
@@ -82,11 +76,8 @@ def summarize(sid: str) -> dict | None:
     if "error" in r:
         return r
     out = {"msg_count": len(msgs), "summary": r["text"]}
-    try:
-        with open(cache, "w") as fh:
-            json.dump(out, fh)
-    except OSError:
-        pass
+    with contextlib.suppress(OSError), open(cache, "w") as fh:
+        json.dump(out, fh)
     return out
 
 

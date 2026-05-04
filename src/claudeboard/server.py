@@ -1,5 +1,3 @@
-"""HTTP server: routes for /, /data.json, /session/<id>, /summary/<id>."""
-
 from __future__ import annotations
 
 import json
@@ -63,12 +61,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._route_summary(sid, force=False)
             return
-        body = PAGE
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(len(PAGE)))
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(PAGE)
 
     def do_POST(self) -> None:
         if self.path.startswith("/summary/"):

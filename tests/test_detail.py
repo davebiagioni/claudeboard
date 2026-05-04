@@ -1,5 +1,3 @@
-"""Tests for detail.cost_breakdown, time_breakdown, trim_turn, detail."""
-
 from __future__ import annotations
 
 from claudeboard import detail
@@ -129,7 +127,6 @@ def test_detail_includes_derived_stats(fake_root):
 
 
 def test_detail_handles_zero_turns(fake_root, tmp_path, monkeypatch):
-    """Stats should not divide by zero when there are no usage records."""
     project = tmp_path / "claude-projects" / "-tmp-empty"
     project.mkdir(parents=True)
     sid = "99999999-9999-9999-9999-999999999999"
