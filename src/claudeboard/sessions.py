@@ -7,6 +7,7 @@ import subprocess
 import time
 
 ROOT = os.path.expanduser("~/.claude/projects")
+SESSIONS_STATE_DIR = os.path.expanduser("~/.claude/sessions")
 MAX_MSG_BYTES = 50_000
 
 # (input, output, cache_read, cache_write_5m) USD per 1M tokens.
@@ -67,6 +68,24 @@ def find_session(sid: str) -> str | None:
     return matches[0] if matches else None
 
 
+def _todo_summary(todos: list) -> dict | None:
+    if not todos:
+        return None
+    total = len(todos)
+    done = sum(1 for t in todos if isinstance(t, dict) and t.get("status") == "completed")
+    current = ""
+    for t in todos:
+        if isinstance(t, dict) and t.get("status") == "in_progress":
+            current = t.get("activeForm") or t.get("content", "")
+            break
+    if not current:
+        for t in todos:
+            if isinstance(t, dict) and t.get("status") != "completed":
+                current = t.get("activeForm") or t.get("content", "")
+                break
+    return {"done": done, "total": total, "current": (current or "")[:200]}
+
+
 # Returns None if the file disappeared mid-read.
 def session_meta(path: str, mtime: float) -> dict | None:
     hit = _meta_cache.get(path)
@@ -74,6 +93,11 @@ def session_meta(path: str, mtime: float) -> dict | None:
         return hit[1]
     cwd = branch = ai_title = slug = ""
     first_user = last_user = last_text = last_tool = last_role = ""
+    last_assistant_kind = ""
+    todos: list = []
+    recent_tools: list[str] = []
+    api_errors = 0
+    turns = 0
     by_model: dict[str, dict[str, int]] = {}
     seen: set = set()
     try:
@@ -91,6 +115,8 @@ def session_meta(path: str, mtime: float) -> dict | None:
                     slug = d["slug"]
                 if d.get("type") == "ai-title" and not ai_title:
                     ai_title = d.get("aiTitle", "")
+                if d.get("type") == "system" and d.get("subtype") == "api_error":
+                    api_errors += 1
                 m = d.get("message")
                 if not isinstance(m, dict):
                     continue
@@ -112,10 +138,12 @@ def session_meta(path: str, mtime: float) -> dict | None:
                     bm["out"] += u.get("output_tokens", 0) or 0
                     bm["cache_r"] += u.get("cache_read_input_tokens", 0) or 0
                     bm["cache_w"] += u.get("cache_creation_input_tokens", 0) or 0
+                    turns += 1
                 role = m.get("role", "")
                 c = m.get("content")
                 text = ""
                 tool = ""
+                row_tools: list[str] = []
                 if isinstance(c, str):
                     text = c
                 elif isinstance(c, list):
@@ -124,8 +152,21 @@ def session_meta(path: str, mtime: float) -> dict | None:
                             continue
                         if b.get("type") == "text" and not text:
                             text = b.get("text", "")
-                        elif b.get("type") == "tool_use" and not tool:
-                            tool = b.get("name", "")
+                        elif b.get("type") == "tool_use":
+                            nm = b.get("name", "")
+                            row_tools.append(nm)
+                            if not tool:
+                                tool = nm
+                            if nm == "TodoWrite":
+                                inp = b.get("input")
+                                if isinstance(inp, dict):
+                                    t = inp.get("todos")
+                                    if isinstance(t, list):
+                                        todos = t
+                if role == "assistant" and row_tools:
+                    recent_tools.extend(row_tools)
+                    if len(recent_tools) > 12:
+                        recent_tools = recent_tools[-12:]
                 text = text.strip()
                 if text.startswith("<"):
                     text = ""
@@ -142,6 +183,9 @@ def session_meta(path: str, mtime: float) -> dict | None:
                     last_role = "assistant"
                     if tool:
                         last_tool = tool
+                        last_assistant_kind = "tool"
+                    elif text:
+                        last_assistant_kind = "text"
                     if text:
                         last_text = text
     except OSError:
@@ -157,8 +201,13 @@ def session_meta(path: str, mtime: float) -> dict | None:
         "last_text": last_text[:240],
         "last_tool": last_tool,
         "last_role": last_role,
+        "last_assistant_kind": last_assistant_kind,
         "cost": cost,
         "models": sorted(by_model.keys()),
+        "todos": _todo_summary(todos),
+        "recent_tools": recent_tools[-8:],
+        "api_errors": api_errors,
+        "turns": turns,
     }
     _meta_cache[path] = (mtime, info)
     return info
@@ -271,6 +320,61 @@ def parse_session(path: str) -> dict:
     }
 
 
+def _running_claude_pids() -> set[str]:
+    try:
+        r = subprocess.run(["ps", "-axo", "pid=,comm="], capture_output=True, text=True, timeout=2)
+    except (subprocess.TimeoutExpired, OSError):
+        return set()
+    pids: set[str] = set()
+    for line in r.stdout.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2 and os.path.basename(parts[1].strip()) == "claude":
+            pids.add(parts[0].strip())
+    return pids
+
+
+# Returns {jsonl_path: {"status", "updated_at"}} for live claude processes.
+# claude writes ~/.claude/sessions/<pid>.json with {pid, sessionId, cwd,
+# status, updatedAt, ...} for each live process — authoritative pid→session
+# mapping. updatedAt advances only on real state changes (busy↔idle), so it
+# distinguishes "just finished" from "long parked."
+# Stale entries (pid no longer running) are filtered out.
+def claude_session_state() -> dict[str, dict]:
+    try:
+        entries = os.listdir(SESSIONS_STATE_DIR)
+    except OSError:
+        return {}
+    if not entries:
+        return {}
+    running = _running_claude_pids()
+    out: dict[str, dict] = {}
+    for name in entries:
+        if not name.endswith(".json"):
+            continue
+        pid = name[:-5]
+        if running and pid not in running:
+            continue
+        try:
+            with open(os.path.join(SESSIONS_STATE_DIR, name)) as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        sid = d.get("sessionId")
+        cwd = d.get("cwd")
+        if not sid or not cwd:
+            continue
+        proj = cwd.replace("/", "-")
+        jsonl_path = os.path.join(ROOT, proj, f"{sid}.jsonl")
+        if not os.path.exists(jsonl_path):
+            continue
+        ts = d.get("updatedAt") or 0
+        out[jsonl_path] = {
+            "status": d.get("status") or "",
+            "updated_at": ts / 1000.0 if ts else 0.0,
+        }
+    return out
+
+
 def claude_cwd_counts() -> dict[str, int]:
     try:
         r = subprocess.run(["ps", "-axo", "pid=,comm="], capture_output=True, text=True, timeout=2)
@@ -323,10 +427,63 @@ def _live_session_paths(all_paths: list[str], cwd_counts: dict[str, int]) -> set
     return live
 
 
+_STATUS_RANK = {"busy": 0, "ready": 1, "idle": 2, "dead": 3}
+# How recently claude must have transitioned to idle for the session to count
+# as "ready". Older idle sessions are just idle — the user has already moved on.
+READY_FRESHNESS_SECS = 600
+
+
+def _status_for(
+    age: float,
+    is_live: bool,
+    info: dict,
+    claude_status: str = "",
+    updated_at: float = 0.0,
+    now: float | None = None,
+) -> str:
+    if not is_live:
+        return "busy" if age < 60 else "dead"
+    if claude_status == "busy":
+        return "busy"
+    if info["last_role"] == "assistant" and info["last_assistant_kind"] == "text":
+        # Only freshly-transitioned idle counts as "needs you". A session that
+        # has been parked at idle for an hour isn't waiting on you in any
+        # meaningful sense — you've moved on.
+        if updated_at:
+            t = now if now is not None else time.time()
+            if (t - updated_at) > READY_FRESHNESS_SECS:
+                return "idle"
+        return "ready"
+    if claude_status == "idle":
+        return "idle"
+    if age < 30:
+        return "busy"
+    return "idle"
+
+
+def _warnings_for(info: dict) -> list[str]:
+    w: list[str] = []
+    if info.get("api_errors"):
+        w.append("api_err")
+    recent = info.get("recent_tools") or []
+    if len(recent) >= 4 and len(set(recent[-4:])) == 1:
+        w.append("loop")
+    turns = info.get("turns") or 0
+    cost = info.get("cost") or 0
+    if turns >= 5 and (cost / turns) > 1.0:
+        w.append("burn")
+    return w
+
+
 def scan() -> list[dict]:
     now = time.time()
     paths = glob.glob(os.path.join(ROOT, "*", "*.jsonl"))
-    live = _live_session_paths(paths, claude_cwd_counts())
+    state = claude_session_state()
+    if state:
+        live: set[str] = set(state.keys())
+    else:
+        # No state files (older claude versions, or none running): fall back.
+        live = _live_session_paths(paths, claude_cwd_counts())
     out = []
     for path in paths:
         try:
@@ -337,12 +494,15 @@ def scan() -> list[dict]:
         if info is None:
             continue
         age = now - st.st_mtime
-        if age < 60:
-            status = "busy"
-        elif path in live:
-            status = "idle"
-        else:
-            status = "dead"
+        st_entry = state.get(path) or {}
+        status = _status_for(
+            age,
+            path in live,
+            info,
+            st_entry.get("status", ""),
+            st_entry.get("updated_at", 0.0),
+            now,
+        )
         title = info["ai_title"] or info["first_user"] or "(untitled)"
         if info["last_role"] == "assistant" and info["last_tool"]:
             activity = "running " + info["last_tool"]
@@ -366,7 +526,12 @@ def scan() -> list[dict]:
                 "slug": info["slug"],
                 "last_user": info["last_user"],
                 "cost": info["cost"],
+                "todos": info.get("todos"),
+                "warnings": _warnings_for(info),
+                "api_errors": info.get("api_errors", 0),
+                "turns": info.get("turns", 0),
+                "updated_at": st_entry.get("updated_at", 0.0),
             }
         )
-    out.sort(key=lambda x: (x["status"] == "dead", -x["mtime"]))
+    out.sort(key=lambda x: (_STATUS_RANK.get(x["status"], 9), -x["mtime"]))
     return out
