@@ -5,23 +5,17 @@
 :root{color-scheme:dark}
 *{box-sizing:border-box}
 html,body{height:100%}
-body{background:#0b0b0d;color:#d4d4d4;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;padding:0;display:grid;grid-template-rows:auto auto 1fr;grid-template-columns:340px 4px 1fr;column-gap:0}
-body.home{grid-template-columns:0 0 1fr}
-body.home aside,body.home .resizer{display:none}
-header{grid-column:1/-1;display:flex;align-items:baseline;gap:16px;padding:18px 24px 14px;border-bottom:1px solid #1a1a1e}
+body{background:#0b0b0d;color:#d4d4d4;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;padding:0;display:grid;grid-template-rows:auto auto 1fr}
+header{display:flex;align-items:baseline;gap:16px;padding:18px 24px 14px;border-bottom:1px solid #1a1a1e}
 #logo{cursor:pointer;user-select:none}
 #logo:hover{color:#bbb}
-.notifbanner{grid-column:1/-1}
 h1{font-size:12px;font-weight:600;letter-spacing:.3em;color:#777;margin:0}
 .meta{color:#444;font-size:11px;margin-left:auto}
 .meta .mtdamt{color:#aaa}
 .meta .mtdpct.warn{color:#fbbf24}
 .meta .mtdpct.over{color:#f87171}
 .meta .sep{color:#2a2a30;margin:0 8px}
-aside{border-right:1px solid #1a1a1e;overflow-y:auto;min-height:0;padding:6px 0}
-.resizer{cursor:col-resize;background:transparent;transition:background 0.1s}
-.resizer:hover,.resizer.dragging{background:#2a2a30}
-main{overflow-y:auto;min-height:0;padding:20px 28px 40px}
+main{overflow-y:auto;min-height:0;padding:20px 28px 40px;max-width:1400px;margin:0 auto;width:100%}
 .s{border-left:2px solid #2a2a2e;padding:7px 14px 7px 12px;cursor:pointer;display:grid;grid-template-columns:38px 1fr auto auto auto;column-gap:10px;row-gap:1px;align-items:baseline}
 .s:hover{background:#131316}
 .s.ready{border-left-color:#7dd3fc;background:#0f1820}
@@ -57,10 +51,6 @@ main{overflow-y:auto;min-height:0;padding:20px 28px 40px}
 .proj .pn{color:#555;font-size:10px}
 .proj .pc{color:#888;font-size:10px;margin-left:auto;font-variant-numeric:tabular-nums}
 .proj .ptri{color:#444;font-size:9px;width:10px;flex:0 0 auto}
-.notifbanner{padding:8px 14px;background:#0f1820;border-bottom:1px solid #1e3a4a;color:#7dd3fc;font-size:11px;display:flex;align-items:center;gap:10px}
-.notifbanner button{background:#1a2832;border:1px solid #2a4a5a;color:#7dd3fc;font:inherit;font-size:11px;padding:3px 9px;border-radius:2px;cursor:pointer}
-.notifbanner button:hover{background:#23323e}
-.notifbanner .x{color:#555;cursor:pointer;margin-left:auto;padding:0 4px}
 .meta .needyou{color:#7dd3fc;background:#0f1820;border:1px solid #1e3a4a;padding:2px 8px;border-radius:2px;cursor:pointer;font-size:11px;letter-spacing:.06em;margin-right:6px}
 .meta .needyou:hover{background:#142028}
 .meta .needyou.pulse{animation:pulse 1.6s ease-in-out infinite}
@@ -174,6 +164,11 @@ main{overflow-y:auto;min-height:0;padding:20px 28px 40px}
 .homefilter .seenlink{color:#666;font-size:11px;cursor:pointer;user-select:none;padding:3px 8px;border-radius:2px}
 .homefilter .seenlink:hover{color:#7dd3fc;background:#0f1820}
 .cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.cardlist{display:flex;flex-direction:column;gap:6px}
+.cardlist .card{min-height:auto;padding:9px 13px}
+.cardexpand{max-height:70vh;overflow-y:auto;background:#0c0c0f;border:1px solid #1a1a1e;border-top:1px solid #1f1f24;border-radius:0 0 3px 3px;padding:16px 18px 22px;margin-top:-7px;margin-bottom:6px}
+.card.expanded{border-bottom-left-radius:0;border-bottom-right-radius:0;background:#131316}
+.card.ready.expanded{background:#142028}
 .card{background:#0f0f12;border:1px solid #1a1a1e;border-left:3px solid #2a2a2e;border-radius:3px;padding:11px 13px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:118px;transition:background 0.1s,border-color 0.1s}
 .card:hover{background:#131316;border-color:#2a2a30}
 .card.busy{border-left-color:#4ade80}
@@ -215,9 +210,6 @@ main{overflow-y:auto;min-height:0;padding:20px 28px 40px}
 .backlink:hover{color:#ddd;background:#1a1a1f}
 </style>
 <header><h1 id=logo>CLAUDEBOARD</h1><span class=navlink id=navlink>spend</span><span class=meta id=meta></span></header>
-<div id=notifbanner class=notifbanner style="display:none"></div>
-<aside id=sidebar><div class=pillbar id=pillbar></div><div id=list></div></aside>
-<div class=resizer id=resizer></div>
 <main id=main></main>
 <script>
 const fmtAge = s => s<60?`${s|0}s`:s<3600?`${s/60|0}m`:s<86400?`${(s/3600).toFixed(1)}h`:`${(s/86400).toFixed(1)}d`;
@@ -227,11 +219,8 @@ const svg = (tag, attrs) => { const n = document.createElementNS('http://www.w3.
 let selected = null;
 let activeTab = 'transcript';
 let viewMode = 'home';
-const rows = new Map();
 const detailNodes = new Map();
 const detailMtime = new Map();
-const prevStatus = new Map();
-const pillEls = {};
 const homePillEls = {};
 const cards = new Map();
 let homeSparkData = null;
@@ -240,27 +229,10 @@ const PALETTE = ['#c4b5fd','#7dd3fc','#fbbf24','#4ade80','#f472b6','#a78bfa','#f
 let filterState = (() => {
   try {
     const s = JSON.parse(localStorage.getItem('cb-filter') || '{}');
-    return {status: s.status || 'all', search: '', group: !!s.group};
-  } catch { return {status:'all', search:'', group:false}; }
+    return {status: s.status || 'all', search: ''};
+  } catch { return {status:'all', search:''}; }
 })();
-function saveFilterState(){ localStorage.setItem('cb-filter', JSON.stringify({status: filterState.status, group: filterState.group})); }
-const collapsedProjects = (() => {
-  try { return new Set(JSON.parse(localStorage.getItem('cb-collapsed') || '[]')); }
-  catch { return new Set(); }
-})();
-function saveCollapsed(){ localStorage.setItem('cb-collapsed', JSON.stringify([...collapsedProjects])); }
-let notifBannerDismissed = localStorage.getItem('cb-notif-dismissed') === '1';
-let mtdThresholdsFired = (() => {
-  try {
-    const s = JSON.parse(localStorage.getItem('cb-mtd-fired') || '{}');
-    const monthKey = new Date().getFullYear() + '-' + (new Date().getMonth()+1);
-    return s.monthKey === monthKey ? new Set(s.thresholds) : new Set();
-  } catch { return new Set(); }
-})();
-function saveMtdFired(){
-  const monthKey = new Date().getFullYear() + '-' + (new Date().getMonth()+1);
-  localStorage.setItem('cb-mtd-fired', JSON.stringify({monthKey, thresholds: [...mtdThresholdsFired]}));
-}
+function saveFilterState(){ localStorage.setItem('cb-filter', JSON.stringify({status: filterState.status})); }
 let seenAt = (() => {
   try { return JSON.parse(localStorage.getItem('cb-seen-v2') || '{}'); }
   catch { return {}; }
@@ -319,29 +291,6 @@ function fmtCost(c){
   return '$' + Math.round(c);
 }
 
-function makeRow(s){
-  const c = el('div');
-  c.dataset.id = s.id;
-  c._st = el('span','st');
-  c._cwd = el('span','cwd');
-  c._cwdpath = el('span','path');
-  c._cwdbr = el('span','br');
-  c._warns = el('span','warns');
-  c._cwd.append(c._cwdpath, c._cwdbr, c._warns);
-  c._cost = el('span','cost');
-  c._age = el('span','age');
-  c._focus = el('span','focusbtn','↗');
-  c._focus.title = 'focus terminal tab';
-  c._focus.onclick = (e) => { e.stopPropagation(); focusTab(s.id, c._focus); };
-  c._ttl = el('span','ttl');
-  c._todo = el('span','todoline');
-  c._todo.style.display = 'none';
-  c._prompt = el('span','prompt');
-  c.append(c._st, c._cwd, c._cost, c._age, c._focus, c._ttl, c._todo, c._prompt);
-  c.onclick = () => selectSession(s.id);
-  return c;
-}
-
 async function focusTab(id, btn){
   try {
     const r = await fetch('/focus/' + id, {method: 'POST'});
@@ -354,49 +303,6 @@ async function focusTab(id, btn){
     btn.title = String(e);
     btn.classList.add('flash');
     setTimeout(() => btn.classList.remove('flash'), 1200);
-  }
-}
-
-function updateRow(c, s){
-  const cls = 's ' + s.status + (selected === s.id ? ' sel' : '');
-  if (c.className !== cls) c.className = cls;
-  const stTxt = s.status === 'ready' ? '◆ ready' : s.status;
-  if (c._st.textContent !== stTxt) c._st.textContent = stTxt;
-  const cwdTxt = s.cwd || s.project || '(no cwd)';
-  if (c._cwdpath.textContent !== cwdTxt) { c._cwdpath.textContent = cwdTxt; c._cwd.title = cwdTxt; }
-  const brTxt = s.branch || '';
-  if (c._cwdbr.textContent !== brTxt) c._cwdbr.textContent = brTxt;
-  c._cwdbr.style.display = brTxt ? '' : 'none';
-  c._warns.replaceChildren();
-  for (const w of s.warnings || []) {
-    const g = el('span', 'wgly w-' + w);
-    if (w === 'api_err') { g.textContent = '⚠'; g.title = (s.api_errors||1) + ' API error' + ((s.api_errors||1) > 1 ? 's' : ''); }
-    else if (w === 'loop') { g.textContent = '↻'; g.title = 'same tool 4× in a row — possible loop'; }
-    else if (w === 'burn') { g.textContent = '$'; g.title = '$/turn high — check costs'; }
-    else { g.textContent = '!'; g.title = w; }
-    c._warns.append(g);
-  }
-  const a = fmtAge(s.age);
-  if (c._age.textContent !== a) c._age.textContent = a;
-  const cost = fmtCost(s.cost);
-  if (c._cost.textContent !== cost) { c._cost.textContent = cost; c._cost.title = s.cost ? '$' + (+s.cost).toFixed(4) : ''; }
-  c._cost.style.display = cost ? '' : 'none';
-  const ttl = s.title || '';
-  if (c._ttl.textContent !== ttl) { c._ttl.textContent = ttl; c._ttl.title = ttl; }
-  c._ttl.style.display = ttl ? '' : 'none';
-  if (s.todos && s.todos.total) {
-    c._todo.replaceChildren(
-      el('span','tcount', `${s.todos.done}/${s.todos.total}`),
-      el('span','ttext', s.todos.current || `${s.todos.done} of ${s.todos.total} done`),
-    );
-    c._todo.title = (s.todos.current || '') + ` (${s.todos.done}/${s.todos.total})`;
-    c._todo.style.display = '';
-    c._prompt.style.display = 'none';
-  } else {
-    c._todo.style.display = 'none';
-    const p = s.last_user ? '> ' + s.last_user : '';
-    if (c._prompt.textContent !== p) { c._prompt.textContent = p; c._prompt.title = s.last_user || ''; }
-    c._prompt.style.display = p ? '' : 'none';
   }
 }
 
@@ -717,9 +623,7 @@ async function loadDetail(id){
   node.append(panels);
 }
 
-function showDetail(id){
-  const main = document.getElementById('main');
-  if (!id) { main.replaceChildren(el('div','placeholder','select a session')); return; }
+function ensureDetailNode(id){
   let node = detailNodes.get(id);
   if (!node) {
     node = el('div');
@@ -730,52 +634,74 @@ function showDetail(id){
     const s = latest.find(x => x.id === id);
     if (s) detailMtime.set(id, s.mtime);
   }
-  main.replaceChildren(node);
+  return node;
 }
 
-function applyBodyMode(){
-  document.body.classList.toggle('home', viewMode === 'home');
+let expandWrap = null;
+
+function collapseExpansion(){
+  if (expandWrap) expandWrap.remove();
+  const ex = document.querySelector('.card.expanded');
+  if (ex) ex.classList.remove('expanded');
+}
+
+function expandRow(id, opts){
+  const card = cards.get(id);
+  if (!card || !card.isConnected) return;
+  card.classList.add('expanded');
+  const node = ensureDetailNode(id);
+  if (!expandWrap) expandWrap = el('div','cardexpand');
+  expandWrap.dataset.id = id;
+  if (expandWrap.firstChild !== node) expandWrap.replaceChildren(node);
+  const savedScroll = expandWrap.scrollTop;
+  card.after(expandWrap);
+  if (savedScroll) expandWrap.scrollTop = savedScroll;
+  if (opts && opts.scroll) card.scrollIntoView({block:'nearest'});
 }
 
 function selectSession(id){
-  if (viewMode === 'session' && selected === id) return;
-  viewMode = 'session';
-  applyBodyMode();
+  if (viewMode !== 'home') {
+    viewMode = 'home';
+    document.getElementById('navlink').classList.remove('active');
+    renderHome();
+  }
+  if (selected === id) {
+    collapseExpansion();
+    selected = null;
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    return;
+  }
+  collapseExpansion();
   selected = id;
   activeTab = 'transcript';
-  document.getElementById('navlink').classList.remove('active');
   if (id) {
     location.hash = id;
     markSeen(id);
     saveSeen();
   }
-  render();
-  showDetail(id);
+  expandRow(id, {scroll:true});
 }
 
 function showSpendView(){
   viewMode = 'spend';
-  applyBodyMode();
   selected = null;
   document.getElementById('navlink').classList.add('active');
   if (location.hash !== '#spend') location.hash = 'spend';
-  for (const [, n] of rows) n.classList.remove('sel');
   renderSpend();
 }
 
 function goHome(){
   viewMode = 'home';
-  applyBodyMode();
   selected = null;
+  collapseExpansion();
   document.getElementById('navlink').classList.remove('active');
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
-  for (const [, n] of rows) n.classList.remove('sel');
   renderHome();
 }
 
 window.addEventListener('hashchange', () => {
   const h = decodeURIComponent(location.hash.slice(1));
-  if (!h) { if (viewMode !== 'home') goHome(); return; }
+  if (!h) { if (selected || viewMode !== 'home') goHome(); return; }
   if (h === 'spend') { if (viewMode !== 'spend') showSpendView(); return; }
   if (h !== selected) selectSession(h);
 });
@@ -791,60 +717,14 @@ function filterMatches(s){
     || (s.project || '').toLowerCase().includes(q);
 }
 
-function initPillbar(){
-  const bar = document.getElementById('pillbar');
-  bar.replaceChildren();
-  const keys = ['all','ready','busy','idle','dead'];
-  for (const k of keys) {
-    const p = el('span','pill ' + k + (filterState.status === k ? ' active' : ''), k);
-    p.onclick = () => {
-      filterState.status = k;
-      saveFilterState();
-      for (const kk of keys) pillEls[kk] && pillEls[kk].classList.toggle('active', kk === k);
-      render();
-    };
-    pillEls[k] = p;
-    bar.append(p);
-  }
-  const search = document.createElement('input');
-  search.className = 'pillsearch';
-  search.type = 'search';
-  search.placeholder = 'search';
-  search.value = filterState.search;
-  search.oninput = (e) => { filterState.search = e.target.value; render(); };
-  pillEls._search = search;
-  bar.append(search);
-  const grp = el('span','pill grp' + (filterState.group ? ' active' : ''), 'group');
-  grp.title = 'group by project';
-  grp.onclick = () => {
-    filterState.group = !filterState.group;
-    saveFilterState();
-    grp.classList.toggle('active', filterState.group);
-    render();
-  };
-  bar.append(grp);
-}
-
-function updatePillCounts(){
-  const counts = {all: latest.length, ready: 0, busy: 0, idle: 0, dead: 0};
-  for (const s of latest) if (counts[s.status] !== undefined) counts[s.status]++;
-  for (const k of ['all','ready','busy','idle','dead']) {
-    if (pillEls[k]) {
-      const t = counts[k] ? `${k} ${counts[k]}` : k;
-      if (pillEls[k].textContent !== t) pillEls[k].textContent = t;
-    }
-  }
-}
-
 function setFilterStatus(k){
   filterState.status = k;
   saveFilterState();
   for (const kk of ['all','ready','busy','idle','dead']) {
-    if (pillEls[kk]) pillEls[kk].classList.toggle('active', kk === k);
     if (homePillEls[kk]) homePillEls[kk].classList.toggle('active', kk === k);
   }
-  if (viewMode === 'home') renderHome();
-  else render();
+  if (viewMode !== 'home') goHome();
+  else renderHome();
 }
 
 function makeCard(s){
@@ -1035,164 +915,39 @@ function renderHome(){
   top.append(spark);
   // Filter
   const filt = renderHomeFilter();
-  // Grid
-  const grid = el('div','cardgrid');
+  // List
+  const list = el('div','cardlist');
   const visible = latest.filter(filterMatches);
   if (!visible.length) {
-    grid.append(el('div','empty', latest.length ? 'no matches' : 'no sessions'));
+    list.append(el('div','empty', latest.length ? 'no matches' : 'no sessions'));
   } else {
     const aliveIds = new Set(latest.map(s => s.id));
     for (const [id, c] of cards) if (!aliveIds.has(id)) cards.delete(id);
+    for (const id of detailNodes.keys()) if (!aliveIds.has(id)) { detailNodes.delete(id); detailMtime.delete(id); }
     for (const s of visible) {
       let c = cards.get(s.id);
       if (!c) { c = makeCard(s); cards.set(s.id, c); }
       updateCard(c, s);
-      grid.append(c);
+      list.append(c);
     }
   }
-  main.replaceChildren(top, filt, grid);
+  main.replaceChildren(top, filt, list);
   updateHomePillCounts();
-  // Use cached spark if recent enough; otherwise refresh.
   if (homeSparkData && homeSparkData.series) renderSpark(sparkSvg, homeSparkData.series);
   refreshHomeSpark(sparkSvg);
-}
-
-function render(){
-  const list = document.getElementById('list');
-  if (!latest.length) { list.replaceChildren(el('div','empty','no sessions')); return; }
-  updatePillCounts();
-  const visible = latest.filter(filterMatches);
-  const aliveIds = new Set(latest.map(s => s.id));
-  for (const [id, n] of rows) if (!aliveIds.has(id)) { n.remove(); rows.delete(id); }
-  for (const id of detailNodes.keys()) if (!aliveIds.has(id)) { detailNodes.delete(id); detailMtime.delete(id); }
-
-  list.replaceChildren();
-  if (!visible.length) {
-    list.append(el('div','empty', latest.length ? 'no matches' : 'no sessions'));
-  } else if (filterState.group) {
-    const groups = new Map();
-    for (const s of visible) {
-      const key = s.cwd || s.project || '(unknown)';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(s);
-    }
-    for (const [proj, sessions] of groups) {
-      const collapsed = collapsedProjects.has(proj);
-      const head = el('div','proj');
-      head.append(
-        el('span','ptri', collapsed ? '▸' : '▾'),
-        el('span','pname', proj),
-        el('span','pc', String(sessions.length)),
-      );
-      head.onclick = () => {
-        if (collapsedProjects.has(proj)) collapsedProjects.delete(proj);
-        else collapsedProjects.add(proj);
-        saveCollapsed();
-        render();
-      };
-      list.append(head);
-      if (!collapsed) {
-        for (const s of sessions) {
-          let r = rows.get(s.id);
-          if (!r) { r = makeRow(s); rows.set(s.id, r); }
-          updateRow(r, s);
-          list.append(r);
-        }
-      }
-    }
-  } else {
-    for (const s of visible) {
-      let r = rows.get(s.id);
-      if (!r) { r = makeRow(s); rows.set(s.id, r); }
-      updateRow(r, s);
-      list.append(r);
-    }
-  }
-
-  if (selected && !aliveIds.has(selected)) {
+  if (selected && cards.has(selected) && latest.find(x => x.id === selected)) {
+    expandRow(selected);
+  } else if (selected) {
     selected = null;
-    showDetail(null);
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   }
-  if (selected) {
-    const s = latest.find(x => x.id === selected);
-    if (s && detailMtime.get(selected) !== s.mtime) {
-      detailMtime.set(selected, s.mtime);
-      if (detailNodes.has(selected)) loadDetail(selected);
-    }
-  }
-}
-
-function fireSessionNotif(s){
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  if (document.hasFocus() && selected === s.id && viewMode === 'session') return;
-  try {
-    const n = new Notification(s.title || 'session ready', {
-      body: s.cwd || s.project || '',
-      tag: 'cb-' + s.id,
-    });
-    n.onclick = () => { window.focus(); selectSession(s.id); n.close(); };
-  } catch (e) {}
-}
-
-function checkTransitionNotifs(){
-  for (const s of latest) {
-    const prev = prevStatus.get(s.id);
-    const cur = s.statusRaw || s.status;
-    if (prev && prev !== 'ready' && cur === 'ready') fireSessionNotif(s);
-    prevStatus.set(s.id, cur);
-  }
-  const live = new Set(latest.map(x => x.id));
-  for (const id of [...prevStatus.keys()]) if (!live.has(id)) prevStatus.delete(id);
-}
-
-function checkMtdNotif(monthCost, pct){
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  for (const t of [75, 100]) {
-    if (pct >= t && !mtdThresholdsFired.has(t)) {
-      mtdThresholdsFired.add(t);
-      saveMtdFired();
-      try {
-        new Notification(`MTD spend at ${pct.toFixed(0)}% of $${PLAN_MAX}`, {
-          body: `$${monthCost.toFixed(0)} this month`,
-          tag: 'cb-mtd-' + t,
-        });
-      } catch (e) {}
-    }
-  }
-}
-
-function maybeShowNotifBanner(){
-  const banner = document.getElementById('notifbanner');
-  if (notifBannerDismissed || typeof Notification === 'undefined' || Notification.permission !== 'default') {
-    banner.style.display = 'none';
-    return;
-  }
-  if (banner.dataset.built) { banner.style.display = ''; return; }
-  banner.replaceChildren();
-  banner.append(el('span', null, 'enable notifications when sessions are ready for you?'));
-  const yes = document.createElement('button');
-  yes.textContent = 'enable';
-  yes.onclick = async () => {
-    try { await Notification.requestPermission(); } catch {}
-    banner.style.display = 'none';
-  };
-  const no = el('span','x','×');
-  no.title = 'dismiss';
-  no.onclick = () => {
-    notifBannerDismissed = true;
-    localStorage.setItem('cb-notif-dismissed','1');
-    banner.style.display = 'none';
-  };
-  banner.append(yes, no);
-  banner.dataset.built = '1';
-  banner.style.display = '';
 }
 
 const PLAN_MAX = 200;
 let latest = [];
 async function tick(){
   latest = await (await fetch('/data.json')).json();
-  if (selected && viewMode === 'session') {
+  if (selected) {
     const cs = latest.find(x => x.id === selected);
     if (cs) {
       const tok = _readyToken(cs);
@@ -1222,23 +977,23 @@ async function tick(){
   meta.append(document.createTextNode(' '));
   meta.append(el('span', pctClass, `(${pct.toFixed(0)}% of $${PLAN_MAX})`));
   meta.title = 'Costs are estimated at Anthropic list prices per model. See STATS tab for per-model breakdown.';
-  checkTransitionNotifs();
-  checkMtdNotif(monthCost, pct);
-  maybeShowNotifBanner();
   if (viewMode === 'home') renderHome();
-  else render();
   if (viewMode === 'spend' && spendState.preset !== 'custom') refreshSpendData();
+  if (selected && viewMode === 'home') {
+    const s = latest.find(x => x.id === selected);
+    if (s && detailMtime.get(selected) !== s.mtime) {
+      detailMtime.set(selected, s.mtime);
+      if (detailNodes.has(selected)) loadDetail(selected);
+    }
+  }
 }
 async function init(){
   document.getElementById('navlink').onclick = () => showSpendView();
   document.getElementById('logo').onclick = () => goHome();
-  initPillbar();
-  applyBodyMode();
   await tick();
   const h = decodeURIComponent(location.hash.slice(1));
   if (h === 'spend') showSpendView();
   else if (h && latest.find(s => s.id === h)) selectSession(h);
-  else goHome();
   setInterval(tick, 3000);
 }
 init();
@@ -1534,35 +1289,4 @@ async function refreshSpendData(){
   node.replaceChildren(wrap);
 }
 
-(function setupResizer(){
-  const resizer = document.getElementById('resizer');
-  const MIN = 220, MAX = 640, KEY = 'cb-sidebar-width';
-  function apply(w){
-    w = Math.max(MIN, Math.min(MAX, w|0));
-    document.body.style.gridTemplateColumns = `${w}px 4px 1fr`;
-    return w;
-  }
-  apply(parseInt(localStorage.getItem(KEY) || '340', 10));
-  let dragging = false;
-  resizer.addEventListener('mousedown', e => {
-    dragging = true;
-    resizer.classList.add('dragging');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    apply(e.clientX);
-  });
-  document.addEventListener('mouseup', () => {
-    if (!dragging) return;
-    dragging = false;
-    resizer.classList.remove('dragging');
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    const m = document.body.style.gridTemplateColumns.match(/^(\d+)px/);
-    if (m) localStorage.setItem(KEY, m[1]);
-  });
-})();
 </script>
