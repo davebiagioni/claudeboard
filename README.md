@@ -22,6 +22,8 @@ For one-click Sonnet session summaries, set `ANTHROPIC_API_KEY` in the environme
 - Sidebar of every session with `busy` / `idle` / `dead` status, derived from `ps`+`lsof` (which `claude` processes are pointing at which cwd) with mtime fallback.
 - Per-session cost at real Anthropic list prices for the actual model used. Header shows month-to-date vs the $200 Max plan.
 - Per-session detail: token + cost mix (in / out / cache\_r / cache\_w), git diff and commits since session start, files edited/written/read with op counts, filtered transcript.
+- Click the `↗` on any live row to bring its iTerm2 or Terminal.app tab to the foreground (macOS, AppleScript).
+- Click `SPEND` in the header for a comprehensive view: presets (1h / 24h / 7d / 30d / MTD) or a custom datetime range, stacked time-series chart by model, breakdowns by token type / model / project, and the top sessions in the window.
 
 ## Pricing notes
 

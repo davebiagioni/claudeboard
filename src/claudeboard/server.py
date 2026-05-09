@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 from claudeboard.detail import detail
+from claudeboard.focus import focus_session
 from claudeboard.page import PAGE
 from claudeboard.sessions import scan
+from claudeboard.spend import aggregate_spend
 from claudeboard.summary import invalidate_summary_cache, summarize
 
 PORT = 8765
@@ -43,6 +47,17 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/data.json":
             self._json(scan())
             return
+        if self.path.startswith("/spend"):
+            q = parse_qs(urlsplit(self.path).query)
+            try:
+                end = float(q.get("to", [str(time.time())])[0])
+                start = float(q.get("from", [str(end - 86400)])[0])
+                buckets = int(q.get("buckets", ["60"])[0])
+            except ValueError:
+                self._empty(400)
+                return
+            self._json(aggregate_spend(start, end, buckets))
+            return
         if self.path.startswith("/session/"):
             sid = self.path[len("/session/") :]
             if not ID_RE.match(sid):
@@ -74,6 +89,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._empty(400)
                 return
             self._route_summary(sid, force=True)
+            return
+        if self.path.startswith("/focus/"):
+            sid = self.path[len("/focus/") :]
+            if not ID_RE.match(sid):
+                self._empty(400)
+                return
+            ok, detail_msg = focus_session(sid)
+            self._json({"ok": ok, "detail": detail_msg}, 200 if ok else 404)
             return
         self._empty(404)
 
